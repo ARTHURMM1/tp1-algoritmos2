@@ -9,75 +9,105 @@ class Trie :
     def __init__(self):
         self.root = TrieNode()
 
-    # comecamos na raiz, e procuramos pelo hashing. se nao existir 
-    def add(self, geohash, deliverer) :
+    # comecamos na raiz, e procuramos pelo hashing. se nao existir. trie padrao
+    # def add(self, geohash, deliverer) :
         
+    #     current = self.root
+
+    #     for char in geohash:
+    #         if char not in current.children :
+    #             current.children[char] = TrieNode()
+
+    #         current = current.children[char]
+
+    #     self.deliverers.append(deliverer)
+
+    
+    
+    # implementacao de insercao compacta
+    def insert(self, geohash, deliverer):
         current = self.root
+        resto = geohash
 
-        for char in geohash:
-            if char not in current.children :
-                current.children[char] = TrieNode()
+        while resto:
 
-            current = current.children[char]
-
-        self.deliverers.append(deliverer)
-
-    def insert(self, hash, deliverer) :
-        current = self.root
-
-        resto = hash
-
-        while resto :
-            #se o no esta vazio, adiciona tudo
-            if not current.children :
+            # Se nao existe um filho que comece com o primeiro
+            # caractere do resto, adicionamos todo o resto.
+            if resto[0] not in current.children:
                 new_node = TrieNode(resto)
                 new_node.deliverers.append(deliverer)
+
                 current.children[resto[0]] = new_node
                 return
-        
-            encontrou = False #ainda nao encontramos
-            
-            for c in current.children.values() : #iteramos sobre cada filho para saber qual prefixo eh comum a ele
-                i = self.common_prefix(resto, c.prefix)
-                if i == 0 : #se nao casar, continue a procurar
-                    continue
 
-                encontrou = True #caso contrario ele encontrou algum prefixo comum
+            # Se existe, ele eh o unico filho que pode
+            # compartilhar prefixo com resto.
+            c = current.children[resto[0]]
 
-                if i == len(c.prefix) : # se conter completamente, atualiza o resto e vai para o proximo
-                    current = c
-                    resto = resto[i:]
-                    break
+            i = self.common_prefix(resto, c.prefix)
 
-                #caso contrario, eles diferem em algum sufixo entao deve quebrar. o antigo deve manter as informacoes
-                new_prefix = resto[i:]
+            # O prefixo do no foi completamente consumido.
+            if i == len(c.prefix):
+
+                # Geohash e prefixo sao exatamente iguais.
+                if i == len(resto):
+                    c.deliverers.append(deliverer)
+                    return
+
+                # Ainda sobrou parte do geohash.
+                # Descemos na Trie e continuamos com o restante.
+                current = c
+                resto = resto[i:]
+                continue
+
+            # O geohash termina no meio do prefixo existente.
+            if i == len(resto):
                 old_prefix = c.prefix[i:]
                 old_children = c.children
                 old_deliverers = c.deliverers
 
-                #limpa o no atual antes de reatribuir os valores
-                c.children = {} 
-                c.deliverers = []
-                
+                # c passa a representar o novo prefixo comum.
+                c.prefix = resto
+                c.children = {}
+                c.deliverers = [deliverer]
 
-                #realiza a quebra
-                c.prefix = c.prefix[:i]
-                #carry do no antigo
-                c.children[old_prefix[0]] = TrieNode(old_prefix)
-                c.children[old_prefix[0]].children = old_children
-                c.children[old_prefix[0]].deliverers = old_deliverers
+                # O antigo no vira filho de c.
+                old_node = TrieNode(old_prefix)
+                old_node.children = old_children
+                old_node.deliverers = old_deliverers
 
-                #adiciona o novo 
-                c.children[new_prefix[0]] = TrieNode(new_prefix)
-                c.children[new_prefix[0]].deliverers.append(deliverer)
-
+                c.children[old_prefix[0]] = old_node
                 return
 
-            if not encontrou : 
-                new_node = TrieNode(resto)
-                new_node.deliverers.append(deliverer)
-                current.children[resto[0]] = new_node
-                return
+            # Os dois prefixos possuem uma parte comum,
+            # mas depois divergem.
+
+            common_prefix = c.prefix[:i]
+            old_prefix = c.prefix[i:]
+            new_prefix = resto[i:]
+
+            old_children = c.children
+            old_deliverers = c.deliverers
+
+            # c vira o no intermediario.
+            c.prefix = common_prefix
+            c.children = {}
+            c.deliverers = []
+
+            # Ramo antigo.
+            old_node = TrieNode(old_prefix)
+            old_node.children = old_children
+            old_node.deliverers = old_deliverers
+
+            c.children[old_prefix[0]] = old_node
+
+            # Novo ramo.
+            new_node = TrieNode(new_prefix)
+            new_node.deliverers.append(deliverer)
+
+            c.children[new_prefix[0]] = new_node
+
+            return
                         
 
             
