@@ -114,10 +114,40 @@ class Trie :
     def common_prefix(a, b) :
         i = 0
         while i < len(a) and i < len(b) and a[i] == b[i] :
-
             i+= 1
-
         return i
+
+    #busca gulosa a partir do atual:
+    def retorna_entregadores(self, node) :
+        entregadores = []
+        entregadores.extend(node.deliverers)
+
+        for filho in node.children.values() :
+            entregadores.extend(self.retorna_entregadores(filho))
+        return entregadores
+
+
+    def search_prefix(self, prefix) :
+        atual = self.root
+        pref_atual = prefix
+        if not prefix:
+            return self.retorna_entregadores(self.root)
+
+        #a ideia é retornar para uma area, quais entregadores estao nessa area OTIMIZACAO: retornar tambem as celulas vizinhas como? 
+        while pref_atual:
+            filho = atual.children.get(pref_atual[0])
+            if filho is None :
+                return []
+            tamanho_comum = self.common_prefix(pref_atual, filho.prefix)
+            if tamanho_comum == len(pref_atual) :
+                return self.retorna_entregadores(filho)
+
+            elif tamanho_comum == len(filho.prefix):
+                atual = filho
+                pref_atual = pref_atual[tamanho_comum:]
+            else :
+                return []
+                
 
         
 
