@@ -1,2 +1,4 @@
 numpy
 osmnx
+pandas
+dash_leaflet
