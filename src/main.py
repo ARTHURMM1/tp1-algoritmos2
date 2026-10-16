@@ -1,8 +1,12 @@
-import gerar_entregadores #gera uma lista de entregadores, n sendo o numero de entregadores cada um tem {id, lat, lon}
-import projecao_nas_ruas #atualiza lat, lon de cada entregador
-import geohash #constroi um dict em que cada entregador tem seu geohash entao temos {entregador: geohash}
-import trie #constroe a trie inserindo cada um, O(n + m) onde m é o tamanho do geohash que no nosso caso é m = 8. comando: trie.insert(geohash, entregador)
-
+import geohash
+import trie
+import projecao_nas_ruas
+import gerar_entregadores
+import pandas as pd
+import dash
+from dash import html, dcc, Input, Output, State
+import dash_leaflet as dl
+from dash_extensions.enrich import DashProxy
 #aplicacao tem caixa de busca usando KMP(?) para procurar em nome do restaurante / nome de rua e retorna (lat, lon) do restaurante
 
 # Raio máximo garantido (km), aproximadamente para BH
@@ -38,17 +42,6 @@ def celula_busca(raio_km=2):
 
 #aqui damos um zoom nos 9 blocos e colorimos os pontos no mapa de cada entregador, no ponto entregadores[id] para cada id em id_candidatos.values()
 #pintar de vermelho os que estao a RAIO de distancia do restaurante
-import geohash
-import trie
-import projecao_nas_ruas
-import gerar_entregadores
-import pandas as pd
-import dash
-from dash import html, dcc, Input, Output, State
-import dash_leaflet as dl
-from dash_extensions.enrich import DashProxy
-
-
 
 ESTILO_SEARCH_BOX = {
     "position": "absolute",
@@ -63,28 +56,56 @@ ESTILO_SEARCH_BOX = {
     "gap": "5px"
 }
 
+RED_MARKER = dict(
+            iconUrl="https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png",
+            shadowUrl="https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png",
+            iconSize=[25, 41],
+            iconAnchor=[12, 41],
+            popupAnchor=[1, -34],
+            shadowSize=[41, 41]
+        )
+
 bares = pd.read_csv('assets\\bares_coords.csv',sep=',')
 bares = bares.set_index('NOME')
-markers = [dl.TileLayer()]
+restaurantes = bares[['Y', 'X']].rename(
+    columns={'Y': 'latitude', 'X': 'longitude'}).to_dict('records')
+entregadores = []
+restaurante_atual = 0
 
 app = DashProxy()
 app.layout = html.Div([
+    
     html.Div([
+        html.Div([
             dcc.Input(
                 id="input-pesquisa", 
                 type="text", 
-                placeholder="Pesquisar restaurante  ", 
+                placeholder="Pesquisar restaurante", 
                 style={"width": "250px", "padding": "5px"}
             ),
             html.Button("Buscar", id="btn-pesquisa", style={"padding": "5px 10px", "cursor": "pointer"})
-        ], style=ESTILO_SEARCH_BOX),
-    dl.Map(markers,id="mapa-principal", center=[-19.922757, -43.945137], zoom=14, style={"height": "100vh"}),
+        ], style={"display": "flex", "alignItems": "center", "gap": "5px"}), 
+
+        html.Div([
+            dcc.Input(
+                id="input-gerador", 
+                type="text", 
+                placeholder=" ", 
+                style={"width": "50px", "padding": "5px"} 
+            ),
+            html.Button("Gerar entregadores", id="btn-gerador", style={"padding": "5px 10px", "cursor": "pointer"})
+        ], style={"display": "flex", "alignItems": "center", "gap": "5px"})
+
+   
+    ], style=dict(ESTILO_SEARCH_BOX, **{"display": "flex", "gap": "20px", "alignItems": "center"})),
+    
+    dl.Map([dl.TileLayer(),dl.LayerGroup(id="grupo-restaurante"),dl.LayerGroup(id="grupo-marcadores")], id="mapa-principal", center=[-19.922757, -43.945137], zoom=14, style={"height": "100vh"}),
+
 ], style={"position": "relative", "width": "100%", "height": "100vh"})
-
-
 @app.callback(
     [Output("mapa-principal", "center"),
-     Output("mapa-principal", "zoom")],
+     Output("mapa-principal", "zoom"),
+     Output("grupo-restaurante","children")],
     Input("btn-pesquisa", "n_clicks"),
     State("input-pesquisa", "value"),
     prevent_initial_call=True
@@ -92,13 +113,36 @@ app.layout = html.Div([
 def buscar_local(n_clicks, endereco):
     try:
         register = bares.loc[endereco]
-        print("achou")
-        return [register.Y,register.X],18
+        pos = [register.Y,register.X]
+        restaurante_atual = register.GEOHASH
+        marcador_restaurante = dl.Marker(
+            position=pos,
+            icon=RED_MARKER,
+            children=dl.Tooltip(f"Restaurante: {endereco}")
+        )
+        return pos,18, [marcador_restaurante]
     except KeyError:
         print("Endereço não encontrado")
 
-    return dash.no_update,dash.no_update
+    return dash.no_update,dash.no_update,dash.no_update
 
+@app.callback(
+    Output("grupo-marcadores", "children"),
+    Input("btn-gerador", "n_clicks"),
+    State("input-gerador", "value"),
+
+    prevent_initial_call=True
+)
+def gerarador_entregadores(n_clicks, num_entregadores):
+    if num_entregadores == 0:
+        return []
+    num_entregadores = int(num_entregadores)    
+    entregadores = gerar_entregadores.gerar_entregadores(restaurantes,num_entregadores,1.5)
+    novos_marcadores = []
+    for i in entregadores:
+        novos_marcadores.append(dl.Marker(position=i,children=dl.Tooltip("Entregador")))
+    return novos_marcadores
+    
 if __name__ == "__main__":
     app.run()
 

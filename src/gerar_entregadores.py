@@ -24,8 +24,8 @@ def _gerar_entregadores(restaurante, numero_de_entregadores: int, sigma_km: floa
     sigma_graus = sigma_km * KM_PARA_GRAUS
     entregadores = []
 
-    latitudes_simuladas = np.random.normal(loc=restaurante.latitude, scale=sigma_graus, size=numero_de_entregadores)
-    longitudes_simuladas = np.random.normal(loc=restaurante.longitude, scale=sigma_graus, size=numero_de_entregadores)
+    latitudes_simuladas = np.random.normal(loc=restaurante['latitude'], scale=sigma_graus, size=numero_de_entregadores)
+    longitudes_simuladas = np.random.normal(loc=restaurante['longitude'], scale=sigma_graus, size=numero_de_entregadores)
 
     for lati, long in zip(latitudes_simuladas, longitudes_simuladas):
         entregadores.append([lati, long])
@@ -41,7 +41,6 @@ def gerar_entregadores(restaurantes, num_entregadores: int, sigma_km: float) -> 
 
     if numero_restaurantes <= 0: raise ValueError("O numero de restaurantes não pode ser zero")
     if num_entregadores <= 0: raise ValueError("O numero de entregadores precisa ser maior que zero")
-    if num_entregadores < numero_restaurantes: raise ValueError("Não é possivel ter menos entregadores do que restaurantes")
     if sigma_km < 0 : raise ValueError("O desvio padrão não pode ser negativo")
   
     entregadores_por_restaurante = num_entregadores // numero_restaurantes
