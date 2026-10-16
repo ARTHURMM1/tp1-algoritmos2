@@ -4,8 +4,28 @@ import geohash #constroi um dict em que cada entregador tem seu geohash entao te
 import trie #constroe a trie inserindo cada um, O(n + m) onde m é o tamanho do geohash que no nosso caso é m = 8. comando: trie.insert(geohash, entregador)
 
 #aplicacao tem caixa de busca usando KMP(?) para procurar em nome do restaurante / nome de rua e retorna (lat, lon) do restaurante
-#RAIO_BUSCA
-#CELULA_BUSCA define o tamanho da celula e depende do raio de busca, de modo que o tamanho da CELULA_BUSCA deve ser a menor possivel e >= RAIO_BUSCA
+
+# Raio máximo garantido (km), aproximadamente para BH
+PRECISOES = {
+    3: 147.0,
+    4: 19.5,
+    5: 4.6,
+    6: 0.61,
+    7: 0.144,
+    8: 0.019
+}
+
+def celula_busca(raio_km=2):
+    if raio_km <= 0:
+        raise ValueError("O raio deve ser positivo")
+
+    for precision in reversed(PRECISOES):
+        if PRECISOES[precision] >= raio_km:
+            return precision
+
+    raise ValueError("Raio maior que o suportado")
+
+#CELULA_BUSCA = celula_busca() <-raio da caixa de busca aqui, dafault 2km
 
 #busca = geohash(lat, lon)
 
