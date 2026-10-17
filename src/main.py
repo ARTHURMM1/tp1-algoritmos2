@@ -1,6 +1,7 @@
 import geohash
 import trie
 import projecao_nas_ruas
+import time
 import gerar_entregadores
 import pandas as pd
 import dash
@@ -65,7 +66,7 @@ RED_MARKER = dict(
             shadowSize=[41, 41]
         )
 
-bares = pd.read_csv('assets\\bares_coords.csv',sep=',')
+bares = pd.read_csv('assets/bares_coords.csv',sep=',')
 bares = bares.set_index('NOME')
 restaurantes = bares[['Y', 'X']].rename(
     columns={'Y': 'latitude', 'X': 'longitude'}).to_dict('records')
@@ -130,20 +131,49 @@ def buscar_local(n_clicks, endereco):
     Output("grupo-marcadores", "children"),
     Input("btn-gerador", "n_clicks"),
     State("input-gerador", "value"),
-
     prevent_initial_call=True
 )
 def gerarador_entregadores(n_clicks, num_entregadores):
-    if num_entregadores == 0:
+    if num_entregadores is None or str(num_entregadores).strip() == "":
         return []
-    num_entregadores = int(num_entregadores)    
-    entregadores = gerar_entregadores.gerar_entregadores(restaurantes,num_entregadores,1.5)
-    novos_marcadores = []
-    for i in entregadores:
-        novos_marcadores.append(dl.Marker(position=i,children=dl.Tooltip("Entregador")))
+
+    try:
+        qtd = int(num_entregadores)
+    except (TypeError, ValueError):
+        return []
+
+    if qtd <= 0:
+        return []
+
+    inicio = time.perf_counter()
+
+    entregadores = gerar_entregadores.gerar_entregadores(restaurantes, qtd, 1.5)
+    fim_geracao = time.perf_counter()
+    print(
+        f"Entregadores gerados: {qtd} em {fim_geracao - inicio:.3f} s. "
+        "Iniciando projeção na rede viária...",
+        flush=True
+    )
+
+    entregadores = projecao_nas_ruas.projetar_nas_ruas_mais_proximas(entregadores)
+
+    fim_projecao = time.perf_counter()
+    print(
+        f"Projeção concluída em {fim_projecao - fim_geracao:.3f} s. "
+        "Criando marcadores...",
+        flush=True
+    )
+
+    novos_marcadores = [
+        dl.Marker(position=pos, children=dl.Tooltip("Entregador"))
+        for pos in entregadores.values()
+    ]
+    print(
+        f"Marcadores criados em {time.perf_counter() - fim_projecao:.3f} s; "
+        "aguardando atualização do mapa no navegador.",
+        flush=True
+    )
     return novos_marcadores
     
 if __name__ == "__main__":
     app.run()
-
-

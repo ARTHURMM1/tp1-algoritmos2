@@ -16,7 +16,7 @@ def _gerar_entregadores(
 
     # Corrige a conversão de km para longitude
     sigma_lon = sigma_lat / np.cos(
-        np.radians(restaurante.latitude)
+        np.radians(restaurante['latitude'])
     )
 
     latitudes = np.random.normal(
@@ -48,16 +48,20 @@ def gerar_entregadores(
 
     numero_restaurantes = len(restaurantes)
 
-    if numero_restaurantes <= 0: raise ValueError("O numero de restaurantes não pode ser zero")
-    if sigma_km < 0 : raise ValueError("O desvio padrão não pode ser negativo")
-  
+    if numero_restaurantes <= 0:
+        raise ValueError("O numero de restaurantes não pode ser zero")
+    if num_entregadores < 0:
+        raise ValueError("O numero de entregadores não pode ser negativo")
+    if sigma_km < 0:
+        raise ValueError("O desvio padrão não pode ser negativo")
+
     entregadores_por_restaurante = num_entregadores // numero_restaurantes
-    entregadores_restantes = num_entregadores - entregadores_por_restaurante*numero_restaurantes
+    entregadores_restantes = num_entregadores % numero_restaurantes
 
-    mais_um = 0
-    entregadores = []
+    entregadores: dict[int, tuple[float, float]] = {}
+    proximo_id = 0
+
     for restaurante in restaurantes:
-
         quantidade = entregadores_por_restaurante
 
         if entregadores_restantes > 0:

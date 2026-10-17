@@ -9,3 +9,5 @@ venv/
 .vscode/
 
 .DS_Store
+
+/cache/belo_horizonte_drive.graphml
