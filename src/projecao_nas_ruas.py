@@ -1,25 +1,36 @@
-"""
-Vamos pegar as coordenadas dos entregadores (que provavelmente estão em cordenadas invalidas) 
-e projeta-los em ruas. 
-"""
+
 import osmnx as ox
 
-def projetar_nas_ruas_mais_proximas(entregadores: list[list[float]]) -> list[list[float]]:
+def projetar_nas_ruas_mais_proximas(
+    entregadores: list[list[float]]
+) -> dict[int, tuple[float, float]]:
     """
-    Mapeia os pontos dos entregadores para as coordenadas validas (ruas).
+    Projeta os entregadores nos nós mais próximos da rede viária.
+
+    Entrada: [[lat, lon], ...]
+    Saída: {id: (lat, lon)}
     """
 
-    # Manda a osmnx montar o grafo de ruas de BH
-    grafo_osm = ox.graph_from_place('Belo Horizonte, Minas Gerais, Brazil', network_type='drive')
+    grafo_osm = ox.graph_from_place(
+        'Belo Horizonte, Minas Gerais, Brazil',
+        network_type='drive'
+    )
 
-    latitudes = [entregador[0] for entregador in entregadores]
-    longitudes = [entregador[1] for entregador in entregadores]
+    latitudes = [e[0] for e in entregadores]
+    longitudes = [e[1] for e in entregadores]
 
-    nos_proximos = ox.distance.nearest_nodes(grafo_osm, X=longitudes, Y=latitudes)
+    nos_proximos = ox.distance.nearest_nodes(
+        grafo_osm,
+        X=longitudes,
+        Y=latitudes
+    )
 
-    for entregador, no_id in zip(entregadores, nos_proximos):
-        entregador[0] = grafo_osm.nodes[no_id]['y']
-        entregador[1] = grafo_osm.nodes[no_id]['x']
+    entregadores_projetados = {}
 
-    return entregadores
+    for id, no_id in enumerate(nos_proximos):
+        lat = grafo_osm.nodes[no_id]['y']
+        lon = grafo_osm.nodes[no_id]['x']
 
+        entregadores_projetados[id] = (lat, lon)
+
+    return entregadores_projetados
