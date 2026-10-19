@@ -16,12 +16,11 @@ import projecao_nas_ruas
 import search_trie
 import trie_compacta
 
-trie_compacta.Trie.common_prefix = staticmethod(trie_compacta.Trie.common_prefix)
-
 PRECISAO_INDICE = 8
 PRECISAO_CELULAS = 6
 SIGMA_KM = 1.5
 DISTANCIA_RUA_M = 100
+LIMITE_TABELA = 100
 
 BASE = Path(__file__).resolve().parent
 PROJECT_ROOT = BASE.parent if BASE.name == "src" else BASE
@@ -36,7 +35,6 @@ restaurantes = bares[['Y', 'X']].rename(columns={'Y': 'latitude', 'X': 'longitud
 
 
 def normalizar(nome):
-    # Permite pesquisar sem acentos, mantendo os nomes originais na interface.
     sem_acentos = ''.join(c for c in unicodedata.normalize('NFKD', str(nome)) if not unicodedata.combining(c))
     return ' '.join(sem_acentos.upper().split())
 
@@ -50,10 +48,9 @@ for identificador, registro in bares.iterrows():
         unidades_por_nome[chave] = []
     unidades_por_nome[chave].append(int(identificador))
 
-# Índice das ruas e geometrias no CRS projetado; criado uma vez.
 arvore_ruas = search_trie.SearchTrie()
-ruas_por_nome = {}       # nome normalizado -> lista de geometrias projetadas
-rotulos_ruas = {}        # nome normalizado -> nome de exibição
+ruas_por_nome = {}
+rotulos_ruas = {}
 crs_metrico = None
 pontos_restaurantes = None
 indice_restaurantes = None
@@ -94,7 +91,6 @@ def carregar_ruas():
     print(f'{len(ruas_por_nome)} nomes de ruas indexados.', flush=True)
 
 
-# Mantém os dados no servidor; execução local de um único processo.
 entregadores = {}
 arvore_espacial = trie_compacta.Trie()
 
@@ -107,10 +103,9 @@ def construir_indice(posicoes):
 
 
 def consultar_entregadores(lat, lon, raio_km):
-    celulas = geohash.buscar_celulas(lat, lon, raio_km, precision=PRECISAO_CELULAS)
-    candidatos = set()
-    for celula in celulas:
-        candidatos.update(arvore_espacial.search_prefix(celula))
+    celulas, candidatos = arvore_espacial.search_radius(
+        lat, lon, raio_km, precision=PRECISAO_CELULAS
+    )
     proximos = {}
     for identificador in candidatos:
         lat_e, lon_e = entregadores[identificador]
@@ -120,8 +115,6 @@ def consultar_entregadores(lat, lon, raio_km):
     return celulas, candidatos, proximos
 
 
-# OSMnx mantém um grafo dirigido: respeitamos os sentidos das vias.
-# Uma única busca reversa a partir do restaurante atende todos os entregadores.
 grafo_tempos = None
 
 
@@ -130,20 +123,14 @@ def obter_grafo_tempos():
     if grafo_tempos is None:
         import osmnx as ox
         grafo = projecao_nas_ruas._carregar_grafo_viario()
-        # Não modifica o grafo original utilizado pelos outros módulos.
         grafo_tempos = grafo.copy()
         grafo_tempos = ox.routing.add_edge_speeds(grafo_tempos, fallback=30)
         grafo_tempos = ox.routing.add_edge_travel_times(grafo_tempos)
     return grafo_tempos
 
 
+# calcula distancia e tempo viario dos entregadores ate o restaurante usando dijkstra reverso
 def estimar_rotas(restaurante, proximos):
-    """Retorna {id: (distancia_viaria_km, tempo_min)} pelo caminho mais rápido.
-
-    A Dijkstra é executada sobre arestas invertidas, preservando os sentidos
-    de circulação no trajeto entregador -> restaurante. O desempate favorece
-    menor distância entre caminhos com o mesmo tempo.
-    """
     if not proximos:
         return {}
     import osmnx as ox
@@ -168,8 +155,6 @@ def estimar_rotas(restaurante, proximos):
             for i in por_no[no]:
                 saida[i] = (metros / 1000, tempo / 60)
             pendentes.remove(no)
-        # Em MultiDiGraph, pred[no][antecessor] lista as arestas que
-        # permitem deslocamento de antecessor para no.
         for anterior, arestas in grafo.pred[no].items():
             for atributos in arestas.values():
                 t = float(atributos.get('travel_time', math.inf))
@@ -195,12 +180,11 @@ def marcador_restaurante(identificador):
         id={'type': 'pin-restaurante', 'index': int(identificador)},
         position=[r['lat'], r['lon']],
         children=[dl.Tooltip(f"{r['nome']} (ID {identificador})"),
-                  dl.Popup(f"{r['nome']} — clique no pin para selecionar")],
+                  dl.Popup(f"{r['nome']} - clique no pin para selecionar")],
     )
 
 
 def restaurantes_proximos_rua(chave):
-    # Unifica todos os segmentos da rua, mesmo quando não são contíguos.
     geometria = unary_union(ruas_por_nome[chave])
     buffer = geometria.buffer(DISTANCIA_RUA_M)
     candidatos = indice_restaurantes.query(buffer, predicate='intersects')
@@ -220,10 +204,6 @@ def linhas_leaflet(geom):
     return []
 
 
-# Uma única camada GeoJSON para todos os entregadores. Os pontos são
-# desenhados pelo renderer Canvas do Leaflet, sem milhares de componentes Dash.
-# As funções são registradas em assets/entregadores_render.js.
-# Referência explícita evita depender da geração dinâmica de funções pelo assign().
 PONTO_ENTREGADOR = {"variable": "dashExtensions.default.pontoEntregador"}
 PONTO_RESULTADO = {"variable": "dashExtensions.default.pontoResultado"}
 
@@ -269,7 +249,6 @@ app = Dash(__name__, assets_folder=str(ASSETS))
 app.layout = html.Div([
     dcc.Store(id='restaurante-selecionado'),
     dcc.Store(id='versao-entregadores', data=0),
-    dcc.Store(id='resultados-tabela', data=[]),
     html.Div([
       html.Div([
         html.Div([
@@ -300,8 +279,8 @@ app.layout = html.Div([
       }),
       html.Div([
           html.H4('Entregadores dentro do raio', style={'margin': '0 0 8px', 'fontSize': '15px'}),
-          html.Div(id='metricas-resumo', style={'marginBottom': '9px', 'fontSize': '12px'}),
-          html.Div(id='tabela-entregadores', style={'fontSize': '12px'}),
+          html.Div('0 entregadores dentro do raio.', id='metricas-resumo', style={'marginBottom': '9px', 'fontSize': '12px'}),
+          html.Div('Nenhum resultado para apresentar.', id='tabela-entregadores', style={'fontSize': '12px'}),
       ], style={
           'backgroundColor': 'white', 'padding': '12px', 'borderRadius': '8px',
           'boxShadow': '0 2px 6px rgba(0,0,0,.25)', 'maxHeight': '42vh',
@@ -344,29 +323,29 @@ app.layout = html.Div([
     State('input-pesquisa', 'value'),
 )
 def sugerir_opcoes(texto, selecionado):
+    if not texto or not texto.strip():
+        return no_update
     opcoes = []
-    if texto and texto.strip():
-        chave = normalizar(texto)
-        for nome in arvore_nomes.search(chave):
-            for identificador in unidades_por_nome[nome]:
-                r = dados_restaurante(identificador)
-                opcoes.append({'label': f"🍴 {r['nome']} — {r['lat']:.5f}, {r['lon']:.5f}",
-                               'value': f'r:{identificador}'})
-                if len(opcoes) >= 20:
-                    break
+    chave = normalizar(texto)
+    for nome in arvore_nomes.search(chave):
+        for identificador in unidades_por_nome[nome]:
+            r = dados_restaurante(identificador)
+            opcoes.append({'label': f"[Restaurante] {r['nome']} ({r['lat']:.5f}, {r['lon']:.5f})",
+                           'value': f'r:{identificador}'})
             if len(opcoes) >= 20:
                 break
-        for nome in arvore_ruas.search(chave)[:20]:
-            opcoes.append({'label': f"🛣️ {rotulos_ruas[nome]}", 'value': f's:{nome}'})
-    # O Dropdown limpa search_value depois da escolha: preservar a opção ativa.
+        if len(opcoes) >= 20:
+            break
+    for nome in arvore_ruas.search(chave)[:20]:
+        opcoes.append({'label': f"[Rua] {rotulos_ruas[nome]}", 'value': f's:{nome}'})
     if selecionado is not None and not any(o['value'] == selecionado for o in opcoes):
         if selecionado.startswith('r:'):
             identificador = int(selecionado[2:])
             r = dados_restaurante(identificador)
-            opcoes.insert(0, {'label': f"🍴 {r['nome']} — {r['lat']:.5f}, {r['lon']:.5f}",
+            opcoes.insert(0, {'label': f"[Restaurante] {r['nome']} ({r['lat']:.5f}, {r['lon']:.5f})",
                               'value': selecionado})
         elif selecionado.startswith('s:') and selecionado[2:] in rotulos_ruas:
-            opcoes.insert(0, {'label': f"🛣️ {rotulos_ruas[selecionado[2:]]}",
+            opcoes.insert(0, {'label': f"[Rua] {rotulos_ruas[selecionado[2:]]}",
                               'value': selecionado})
     return opcoes
 
@@ -374,47 +353,44 @@ def sugerir_opcoes(texto, selecionado):
 @app.callback(
     Output('grupo-restaurantes', 'children'),
     Output('grupo-rua', 'children'),
-    Output('mapa-principal', 'center'),
-    Output('mapa-principal', 'zoom'),
+    Output('mapa-principal', 'viewport'),
     Output('restaurante-selecionado', 'data'),
     Output('status-rua', 'children'),
     Input('btn-pesquisa', 'n_clicks'),
+    Input('input-pesquisa', 'value'),
     Input({'type': 'pin-restaurante', 'index': ALL}, 'n_clicks'),
-    State('input-pesquisa', 'value'),
     prevent_initial_call=True,
 )
-def buscar_local(_, cliques_pins, valor):
+def buscar_local(_, valor, cliques_pins):
     origem = ctx.triggered_id
     if isinstance(origem, dict) and origem.get('type') == 'pin-restaurante':
-        # Ignora o disparo inicial quando novos marcadores entram no mapa.
         if not ctx.triggered or not ctx.triggered[0].get('value'):
-            return (no_update,) * 6
+            return (no_update,) * 5
         identificador = int(origem['index'])
         r = dados_restaurante(identificador)
-        return no_update, no_update, [r['lat'], r['lon']], 16, r, f"Selecionado: {r['nome']} (ID {identificador})"
-    if origem != 'btn-pesquisa' or not valor:
-        return (no_update,) * 6
+        return no_update, no_update, {'center': [r['lat'], r['lon']], 'zoom': 16}, r, f"Selecionado: {r['nome']} (ID {identificador})"
+    if origem not in ('btn-pesquisa', 'input-pesquisa') or not valor:
+        return (no_update,) * 5
     if valor.startswith('r:'):
         identificador = int(valor[2:])
         r = dados_restaurante(identificador)
-        return [marcador_restaurante(identificador)], [], [r['lat'], r['lon']], 16, r, f"Selecionado: {r['nome']} (ID {identificador})"
+        return [marcador_restaurante(identificador)], [], {'center': [r['lat'], r['lon']], 'zoom': 16}, r, f"Selecionado: {r['nome']} (ID {identificador})"
     if valor.startswith('s:'):
         chave = valor[2:]
         if chave not in ruas_por_nome:
-            return (no_update,) * 6
+            return (no_update,) * 5
         inicio = time.perf_counter()
         ids, geometria = restaurantes_proximos_rua(chave)
         linhas = linhas_leaflet(geometria)
         if not linhas:
-            return [], [], no_update, no_update, None, 'Rua sem geometria disponível.'
-        # Ponto central aproximado da extensão da rua, em coordenadas geográficas.
+            return [], [], no_update, None, 'Rua sem geometria disponível.'
         x1, y1, x2, y2 = geometria.bounds
         centro = [(y1 + y2) / 2, (x1 + x2) / 2]
         zoom = 14 if max(y2 - y1, x2 - x1) < 0.035 else 12
-        return ([marcador_restaurante(i) for i in ids], linhas, centro, zoom,
-                None, f"{rotulos_ruas[chave]}: {len(ids)} restaurantes a até 200 m de qualquer trecho. "
+        return ([marcador_restaurante(i) for i in ids], linhas, {'center': centro, 'zoom': zoom},
+                None, f"{rotulos_ruas[chave]}: {len(ids)} restaurantes proximos. "
                       f"Clique em um pin para selecionar. Consulta: {time.perf_counter() - inicio:.3f}s")
-    return (no_update,) * 6
+    return (no_update,) * 5
 
 
 @app.callback(
@@ -442,25 +418,52 @@ def gerar_e_indexar(_, quantidade, versao):
     return geojson_entregadores(novos), (versao or 0) + 1
 
 
+def apresentar_resultados(linhas):
+    if not linhas:
+        return '0 entregadores dentro do raio.', 'Nenhum resultado para apresentar.'
+    viaveis = [x for x in linhas if x['tempo_min'] is not None]
+    media_tempo = sum(x['tempo_min'] for x in viaveis) / len(viaveis) if viaveis else None
+    media_distancia = sum(x['distancia_geografica'] for x in linhas) / len(linhas)
+    resumo = (f"{len(linhas)} entregadores no raio | "
+              f"distância geográfica média: {media_distancia:.2f} km | "
+              f"tempo médio estimado: {media_tempo:.1f} min" if media_tempo is not None
+              else f"{len(linhas)} entregadores no raio | nenhum percurso viário encontrado")
+    if len(linhas) > LIMITE_TABELA:
+        resumo += f" (mostrando os {LIMITE_TABELA} mais rápidos)"
+    cabecalho = html.Tr([html.Th(t) for t in ('ID', 'Distância geográfica (km)',
+                    'Distância viária (km)', 'Tempo estimado (min)')])
+    corpo = [html.Tr([
+        html.Td(x['id']), html.Td(f"{x['distancia_geografica']:.3f}"),
+        html.Td('Sem rota' if x['distancia_viaria'] is None else f"{x['distancia_viaria']:.3f}"),
+        html.Td('Sem rota' if x['tempo_min'] is None else f"{x['tempo_min']:.2f}"),
+    ]) for x in linhas[:LIMITE_TABELA]]
+    tabela = html.Div(html.Table([html.Thead(cabecalho), html.Tbody(corpo)],
+             style={'width': '100%', 'borderCollapse': 'collapse', 'textAlign': 'left'}),
+             style={'maxHeight': '30vh', 'overflowY': 'auto', 'overflowX': 'auto'})
+    return resumo, tabela
+
+
 @app.callback(
     Output('geojson-resultados', 'data'),
     Output('status', 'children'),
-    Output('resultados-tabela', 'data'),
+    Output('metricas-resumo', 'children'),
+    Output('tabela-entregadores', 'children'),
     Input('btn-busca', 'n_clicks'),
     Input('versao-entregadores', 'data'),
     Input('restaurante-selecionado', 'data'),
-    Input('input-raio', 'value'),
+    State('input-raio', 'value'),
     prevent_initial_call=True,
 )
 def destacar_proximos(_, versao, restaurante, raio):
+    vazio = {'type': 'FeatureCollection', 'features': []}
     if not restaurante:
-        return {'type': 'FeatureCollection', 'features': []}, 'Selecione um restaurante para buscar entregadores.', []
+        return vazio, 'Selecione um restaurante para buscar entregadores.', *apresentar_resultados([])
     try:
         raio = float(raio)
         if not 0 < raio <= 100:
-            return {'type': 'FeatureCollection', 'features': []}, 'Informe um raio maior que zero e de até 100 km.', []
+            return vazio, 'Informe um raio maior que zero e de até 100 km.', *apresentar_resultados([])
     except (TypeError, ValueError):
-        return {'type': 'FeatureCollection', 'features': []}, 'Informe um raio válido.', []
+        return vazio, 'Informe um raio válido.', *apresentar_resultados([])
     inicio = time.perf_counter()
     celulas, candidatos, proximos = consultar_entregadores(restaurante['lat'], restaurante['lon'], raio)
     dados = geojson_resultados(candidatos, proximos, restaurante['lat'], restaurante['lon'])
@@ -473,11 +476,13 @@ def destacar_proximos(_, versao, restaurante, raio):
                        'distancia_viaria': round(distancia_viaria, 3) if distancia_viaria is not None else None,
                        'tempo_min': round(tempo_min, 2) if tempo_min is not None else None})
     linhas.sort(key=lambda x: (x['tempo_min'] is None, x['tempo_min'] if x['tempo_min'] is not None else math.inf))
+    resumo, tabela = apresentar_resultados(linhas)
     fora = len(candidatos) - len(proximos)
-    return dados, (f'{len(proximos)} dentro do raio (vermelho) | '
-                   f'{fora} candidatos fora do raio (laranja) | '
-                   f'{len(celulas)} células consultadas | '
-                   f'consulta: {time.perf_counter() - inicio:.4f}s'), linhas
+    status = (f'{len(proximos)} dentro do raio (vermelho) | '
+              f'{fora} candidatos fora do raio (laranja) | '
+              f'{len(celulas)} células consultadas | '
+              f'consulta: {time.perf_counter() - inicio:.4f}s')
+    return dados, status, resumo, tabela
 
 
 @app.callback(
@@ -500,36 +505,6 @@ def desenhar_raio(restaurante, raio, mostrar):
                       fillColor='#60a5fa', fillOpacity=0.12,
                       children=dl.Tooltip(f'Raio: {raio_km * 1000:g} metros'))]
 
-
-
-@app.callback(
-    Output('metricas-resumo', 'children'),
-    Output('tabela-entregadores', 'children'),
-    Input('resultados-tabela', 'data'),
-)
-def apresentar_resultados(linhas):
-    if not linhas:
-        return '0 entregadores dentro do raio.', 'Nenhum resultado para apresentar.'
-    viaveis = [x for x in linhas if x['tempo_min'] is not None]
-    media_tempo = sum(x['tempo_min'] for x in viaveis) / len(viaveis) if viaveis else None
-    media_distancia = sum(x['distancia_geografica'] for x in linhas) / len(linhas)
-    resumo = (f"{len(linhas)} entregadores no raio | "
-              f"distância geográfica média: {media_distancia:.2f} km | "
-              f"tempo médio estimado: {media_tempo:.1f} min" if media_tempo is not None
-              else f"{len(linhas)} entregadores no raio | nenhum percurso viário encontrado")
-    cabecalho = html.Tr([html.Th(t) for t in ('ID', 'Distância geográfica (km)',
-                    'Distância viária (km)', 'Tempo estimado (min)')])
-    corpo = [html.Tr([
-        html.Td(x['id']), html.Td(f"{x['distancia_geografica']:.3f}"),
-        html.Td('Sem rota' if x['distancia_viaria'] is None else f"{x['distancia_viaria']:.3f}"),
-        html.Td('Sem rota' if x['tempo_min'] is None else f"{x['tempo_min']:.2f}"),
-    ]) for x in linhas]
-    tabela = html.Div(html.Table([html.Thead(cabecalho), html.Tbody(corpo)],
-             style={'width': '100%', 'borderCollapse': 'collapse', 'textAlign': 'left'}),
-             style={'maxHeight': '30vh', 'overflowY': 'auto', 'overflowX': 'auto'})
-    return resumo, tabela
-
 if __name__ == '__main__':
-    # Carrega o índice de ruas uma vez, antes de aceitar buscas.
     carregar_ruas()
     app.run(debug=False)

@@ -1,3 +1,6 @@
+import geohash as gh
+
+
 class TrieNode :
     def __init__(self, prefix=""):
         self.prefix = prefix
@@ -96,7 +99,7 @@ class Trie :
                         
 
             
-    def common_prefix(a, b) :
+    def common_prefix(self, a, b) :
         i = 0
         while i < len(a) and i < len(b) and a[i] == b[i] :
             i+= 1
@@ -118,7 +121,6 @@ class Trie :
         if not prefix:
             return self.retorna_entregadores(self.root)
 
-        #a ideia é retornar para uma area, quais entregadores estao nessa area OTIMIZACAO: retornar tambem as celulas vizinhas como? 
         while pref_atual:
             filho = atual.children.get(pref_atual[0])
             if filho is None :
@@ -132,8 +134,42 @@ class Trie :
                 pref_atual = pref_atual[tamanho_comum:]
             else :
                 return []
-                
 
+    # busca entregadores dentro do raio podando ramos da trie fora do alcance
+    def search_radius(self, lat, lon, raio_km, precision=6):
+        celulas = []
+        candidatos = set()
+
+        def coletar_subarvore(node, pref):
+            if len(pref) >= precision:
+                celulas.append(pref[:precision])
+                candidatos.update(self.retorna_entregadores(node))
+                return
+            if node.deliverers:
+                candidatos.update(node.deliverers)
+            for filho in node.children.values():
+                coletar_subarvore(filho, pref + filho.prefix)
+
+        def dfs(node, pref):
+            if pref:
+                if len(pref) >= precision:
+                    celula = pref[:precision]
+                    if gh.distancia_celula(lat, lon, celula) <= raio_km:
+                        celulas.append(celula)
+                        candidatos.update(self.retorna_entregadores(node))
+                    return
+                if gh.distancia_celula(lat, lon, pref) > raio_km:
+                    return
+                if gh.caixa_totalmente_dentro(lat, lon, pref, raio_km):
+                    coletar_subarvore(node, pref)
+                    return
+            if node.deliverers:
+                candidatos.update(node.deliverers)
+            for filho in node.children.values():
+                dfs(filho, pref + filho.prefix)
+
+        dfs(self.root, "")
+        return celulas, candidatos
         
 
 

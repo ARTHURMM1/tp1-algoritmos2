@@ -138,12 +138,10 @@ def haversine(lat1, lon1, lat2, lon2):#calcula distancia entre 2 pontos consider
 
     return 2 * R * asin(sqrt(a))
 
-def distancia_celula(lat, lon, hash): #calcula distancia geodesica minima até a origem, considerando a terra esferica
+def distancia_celula(lat, lon, hash): #calcula distancia geodesica minima ate a origem, considerando a terra esferica
     R = 6371 #km - raio da terra
     lat_min, lat_max, lon_min, lon_max = decode_geohash(hash)
 
-    # Distância angular mínima até o retângulo.
-    # Considera também a continuidade na longitude ±180°.
     phi = radians(lat)
     a = radians(lat_min)
     b = radians(lat_max)
@@ -158,8 +156,6 @@ def distancia_celula(lat, lon, hash): #calcula distancia geodesica minima até a
 
     delta = radians(dlon)
 
-    # Maximiza o cosseno da distância angular
-    # em relação à latitude da célula.
     from math import atan2
     phi_ideal = atan2(sin(phi), cos(phi) * cos(delta))
     phi_ideal = max(a, min(b, phi_ideal))
@@ -172,6 +168,15 @@ def distancia_celula(lat, lon, hash): #calcula distancia geodesica minima até a
 
     from math import acos
     return R * acos(c)
+
+def caixa_totalmente_dentro(lat, lon, hash, raio_km): #verifica se os 4 cantos da celula estao dentro do raio
+    lat_min, lat_max, lon_min, lon_max = decode_geohash(hash)
+    return (
+        haversine(lat, lon, lat_min, lon_min) <= raio_km
+        and haversine(lat, lon, lat_min, lon_max) <= raio_km
+        and haversine(lat, lon, lat_max, lon_min) <= raio_km
+        and haversine(lat, lon, lat_max, lon_max) <= raio_km
+    )
 
 def buscar_celulas(lat, lon, raio_km, precision=5):#retorna as celulas dentro do raio 
     origem = geohash(lon, lat, precision)

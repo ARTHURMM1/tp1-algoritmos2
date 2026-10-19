@@ -20,7 +20,7 @@ window.dashExtensions = Object.assign({}, window.dashExtensions, {
                 fillOpacity: 0.95
             }).bindTooltip(
                 'Entregador ' + feature.properties.id +
-                ' — ' + feature.properties.distancia_km.toFixed(3) + ' km' +
+                ' - ' + feature.properties.distancia_km.toFixed(3) + ' km' +
                 (dentro ? ' (dentro do raio)' : ' (candidato fora do raio)')
             );
         }

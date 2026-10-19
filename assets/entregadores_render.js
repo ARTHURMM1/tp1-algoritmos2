@@ -17,7 +17,7 @@ window.dashExtensions.default.pontoResultado = function(feature, latlng) {
         fillColor: cor, fillOpacity: 0.95
     });
     if (p.distancia_km != null) {
-        marcador.bindTooltip('Entregador ' + p.id + ' — ' + Number(p.distancia_km).toFixed(3) + ' km');
+        marcador.bindTooltip('Entregador ' + p.id + ' - ' + Number(p.distancia_km).toFixed(3) + ' km');
     }
     return marcador;
 };
