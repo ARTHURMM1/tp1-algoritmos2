@@ -2,4 +2,9 @@ numpy
 osmnx
 scikit-learn
 pandas
-dash_leaflet
+dash
+dash-leaflet
+dash-extensions
+geopandas
+shapely
+networkx
