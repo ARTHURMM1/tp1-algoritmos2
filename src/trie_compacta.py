@@ -8,21 +8,6 @@ class TrieNode :
 class Trie :
     def __init__(self):
         self.root = TrieNode()
-
-    # comecamos na raiz, e procuramos pelo hashing. se nao existir. trie padrao
-    # def add(self, geohash, deliverer) :
-        
-    #     current = self.root
-
-    #     for char in geohash:
-    #         if char not in current.children :
-    #             current.children[char] = TrieNode()
-
-    #         current = current.children[char]
-
-    #     self.deliverers.append(deliverer)
-
-    
     
     # implementacao de insercao compacta
     def insert(self, geohash, deliverer):
