@@ -114,27 +114,6 @@ class Trie :
             entregadores.extend(self.retorna_entregadores(filho))
         return entregadores
 
-
-    def search_prefix(self, prefix) :
-        atual = self.root
-        pref_atual = prefix
-        if not prefix:
-            return self.retorna_entregadores(self.root)
-
-        while pref_atual:
-            filho = atual.children.get(pref_atual[0])
-            if filho is None :
-                return []
-            tamanho_comum = self.common_prefix(pref_atual, filho.prefix)
-            if tamanho_comum == len(pref_atual) :
-                return self.retorna_entregadores(filho)
-
-            elif tamanho_comum == len(filho.prefix):
-                atual = filho
-                pref_atual = pref_atual[tamanho_comum:]
-            else :
-                return []
-
     # busca entregadores dentro do raio podando ramos da trie fora do alcance
     def search_radius(self, lat, lon, raio_km, precision=6):
         celulas = []

@@ -1,3 +1,4 @@
+from math import atan2
 BASE32 = "0123456789bcdefghjkmnpqrstuvwxyz"
 def bin_to_base32(binary) :
     return "".join(
@@ -38,61 +39,6 @@ def geohash(x, y, precision=8) :
         
     return bin_to_base32(s)[:precision]
 
-def geohash_neighbors(hash): # retorna um dict de vizinhos para busca
-    # Converte Base32 para binário
-    bits = "".join(
-        f"{BASE32.index(c):05b}" for c in hash
-    )
-
-    # Separa longitude e latitude
-    lon_bits = bits[::2]
-    lat_bits = bits[1::2]
-
-    lon = int(lon_bits, 2)
-    lat = int(lat_bits, 2)
-
-    n_lon = 1 << len(lon_bits)
-    n_lat = 1 << len(lat_bits)
-
-    directions = {
-        "N":  (0, 1),
-        "S":  (0, -1),
-        "E":  (1, 0),
-        "W":  (-1, 0),
-        "NE": (1, 1),
-        "NW": (-1, 1),
-        "SE": (1, -1),
-        "SW": (-1, -1)
-    }
-
-    neighbors = {}
-
-    for direction, (dx, dy) in directions.items():
-        # Longitude dá a volta no globo
-        new_lon = (lon + dx) % n_lon
-        new_lat = lat + dy
-
-        # Não ultrapassa os polos
-        if not 0 <= new_lat < n_lat:
-            continue
-
-        # Reconstrói os bits intercalados
-        x = f"{new_lon:0{len(lon_bits)}b}"
-        y = f"{new_lat:0{len(lat_bits)}b}"
-
-        new_bits = "".join(
-            x[i // 2] if i % 2 == 0 else y[i // 2]
-            for i in range(len(bits))
-        )
-
-        # Converte novamente para Base32
-        neighbors[direction] = "".join(
-            BASE32[int(new_bits[i:i+5], 2)]
-            for i in range(0, len(new_bits), 5)
-        )
-
-    return neighbors
-
 def decode_geohash(hash): #decodifica o geohash em latitude e longitude
     bits = "".join(
         f"{BASE32.index(c):05b}" for c in hash
@@ -118,7 +64,6 @@ def decode_geohash(hash): #decodifica o geohash em latitude e longitude
     return lat_min, lat_max, lon_min, lon_max
 
 
-from collections import deque
 from math import radians, sin, cos, asin, sqrt
 
 def haversine(lat1, lon1, lat2, lon2):#calcula distancia entre 2 pontos considerando a terra esferica 
@@ -156,7 +101,7 @@ def distancia_celula(lat, lon, hash): #calcula distancia geodesica minima ate a 
 
     delta = radians(dlon)
 
-    from math import atan2
+    # Isso aqui é pra calcular a distancia geodesica minima (derivada do produto escalar na esfera)
     phi_ideal = atan2(sin(phi), cos(phi) * cos(delta))
     phi_ideal = max(a, min(b, phi_ideal))
 
@@ -177,28 +122,4 @@ def caixa_totalmente_dentro(lat, lon, hash, raio_km): #verifica se os 4 cantos d
         and haversine(lat, lon, lat_max, lon_min) <= raio_km
         and haversine(lat, lon, lat_max, lon_max) <= raio_km
     )
-
-def buscar_celulas(lat, lon, raio_km, precision=5):#retorna as celulas dentro do raio 
-    origem = geohash(lon, lat, precision)
-
-    visitados = {origem}
-    fila = deque([origem])
-    celulas = []
-
-    while fila:
-        atual = fila.popleft()
-        celulas.append(atual)
-
-        for vizinho in geohash_neighbors(atual).values():
-            if vizinho in visitados:
-                continue
-
-            visitados.add(vizinho)
-
-            if distancia_celula(lat, lon, vizinho) <= raio_km:
-                fila.append(vizinho)
-
-    return celulas
-
-
 
