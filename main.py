@@ -1,4 +1,5 @@
 from pathlib import Path
+import sys
 import time
 import math
 import heapq
@@ -9,6 +10,9 @@ import pandas as pd
 from shapely.ops import unary_union
 from dash import Dash, html, dcc, Input, Output, State, ALL, ctx, no_update
 import dash_leaflet as dl
+
+BASE = Path(__file__).resolve().parent
+sys.path.insert(0, str(BASE / "src"))
 
 import geohash
 import gerar_entregadores
@@ -22,9 +26,7 @@ SIGMA_KM = 1.5
 DISTANCIA_RUA_M = 100
 LIMITE_TABELA = 100
 
-BASE = Path(__file__).resolve().parent
-PROJECT_ROOT = BASE.parent if BASE.name == "src" else BASE
-ASSETS = PROJECT_ROOT / "assets"
+ASSETS = BASE / "assets"
 CSV = ASSETS / "bares_coords.csv"
 bares = pd.read_csv(CSV).dropna(subset=['NOME', 'Y', 'X']).copy().reset_index(drop=True)
 bares['NOME'] = bares['NOME'].astype(str)
